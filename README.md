@@ -84,6 +84,7 @@ They move independently.
 | `ece`, `brier` | Is the stated probability honest? | When a downstream step multiplies by it |
 | `reliability` | Honest *where*? | Thresholds differ per confidence band |
 | `risk_coverage` | Does the ordering find the rows worth escalating? | Human-in-the-loop routing |
+| `select_threshold` | Where do I cut to hit a target accuracy? | Turning the measurement into an operating rule |
 
 Temperature scaling never changes which option wins, so accuracy is invariant
 under calibration. If you only need escalation routing, you may not need to
@@ -144,6 +145,45 @@ lowered accuracy on a binary task (0.895 to 0.877 and 0.877, both together
 pay off with more options. Measure before adopting — which is what this library
 is for.
 
+## A demo where the threshold decides the game
+
+`examples/sortgame.py` drops Chinese waste items one at a time into four bins.
+Sorting 沾满油污的披萨盒 is not geometry, it is a judgement about a short string,
+and it has to happen before the item lands. Calibration is a game rule rather than
+decoration: the temperature and the escalation cut are both fitted on a held-out
+slice of the item list, and anything below the cut goes to 人工复核 for partial
+credit instead of being guessed.
+
+![分类速递](docs/sortgame.gif)
+
+Running the same script against two models is the clearest argument for this
+library that I have. The calibration failures point in opposite directions:
+
+| | Qwen3-1.7B | Qwen3.5-27B (4-bit) |
+|---|---|---|
+| Accuracy on the 50 calibration items | 0.600 | 0.980 |
+| ECE before / after | 0.411 → 0.070 | 0.160 → 0.032 |
+| Fitted temperature | 9.86 (**over**-confident) | 0.25 (**under**-confident) |
+| Cut for 95% retained accuracy | none exists | 0.64 |
+| Result of 14 timed rounds | escalates all 14 | answers all 14, 12 right, **+110** |
+| Median decision | 18 ms | 319 ms |
+
+The small model is not merely wrong, it is confidently wrong: 48 of its 50
+calibration answers land above 0.9 confidence and only 58% of those are right.
+`select_threshold` returns infinity for it, which is the honest instruction —
+there is no confidence level at which this model may act unsupervised on this
+task. The large model needed sharpening rather than softening, and calibration
+then let it play every round.
+
+What calibration does not buy you is protection from confident errors: the 27B
+lost both of its points at 0.94 and 1.00 confidence (坚果壳, 过期的维生素片).
+Escalation catches uncertainty, not ignorance.
+
+```bash
+python examples/sortgame.py --model mlx-community/Qwen3-1.7B-bf16 --target 0.95
+python examples/sortgame.py --replay docs/sortgame.json   # re-render without a model
+```
+
 ## Limitations
 
 - Temperature scaling is one scalar per question shape. It corrects over-confidence; it cannot fix a model that is wrong, and it does not reorder anything.
@@ -151,6 +191,7 @@ is for.
 - A temperature fitted on one workload does not transfer to another. Refit per task, per label set, per question shape.
 - `MLXScorer` is a reference implementation: single sequence, no batching, macOS arm64 only.
 - All numbers above come from one machine and one run each. The repository ships the tests, not frozen benchmark fixtures.
+- `select_threshold` is fitted on labelled rows and assumes the live distribution matches them. Refit when the inputs drift.
 
 ## Development
 

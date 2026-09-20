@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from openkev import brier, ece, evaluate, reliability, risk_coverage
+from openkev import brier, ece, evaluate, reliability, risk_coverage, select_threshold
 from openkev.metrics import as_probabilities
 
 
@@ -64,3 +64,30 @@ def test_as_probabilities_rejects_malformed_input(bad):
 def test_evaluate_rejects_mismatched_labels():
 	with pytest.raises(ValueError):
 		evaluate(np.array([[0.5, 0.5]]), [0, 1])
+
+
+def test_select_threshold_finds_the_lowest_workable_cut():
+	conf = np.array([0.95, 0.9, 0.8, 0.7, 0.6, 0.5])
+	correct = np.array([True, True, True, True, False, False])
+	# 前四行全对，切在 0.7 正好留下 4/6 且准确率 1.0
+	assert select_threshold(conf, correct, target_accuracy=1.0, min_coverage=0.5) == 0.7
+
+
+def test_select_threshold_returns_inf_when_nothing_reaches_the_target():
+	conf = np.linspace(0.5, 1.0, 20)
+	correct = np.zeros(20, dtype=bool)
+	assert select_threshold(conf, correct, target_accuracy=0.9) == float("inf")
+
+
+def test_select_threshold_respects_min_coverage():
+	conf = np.array([0.99, 0.5, 0.5, 0.5])
+	correct = np.array([True, False, False, False])
+	# 只有最高那一行够准，但它只占 25%，要求 50% 覆盖就无解
+	assert select_threshold(conf, correct, target_accuracy=1.0, min_coverage=0.5) == float("inf")
+	assert select_threshold(conf, correct, target_accuracy=1.0, min_coverage=0.25) == 0.99
+
+
+@pytest.mark.parametrize("kwargs", [{"target_accuracy": 0.0}, {"min_coverage": 1.5}])
+def test_select_threshold_validates_arguments(kwargs):
+	with pytest.raises(ValueError):
+		select_threshold([0.9], [True], **kwargs)

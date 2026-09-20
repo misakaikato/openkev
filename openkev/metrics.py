@@ -136,6 +136,39 @@ def risk_coverage(
 	return out
 
 
+def select_threshold(
+	confidence: Sequence[float],
+	correct: Sequence[bool],
+	*,
+	target_accuracy: float = 0.9,
+	min_coverage: float = 0.1,
+) -> float:
+	"""Lowest confidence cut whose retained rows reach `target_accuracy`.
+
+	This is the step between measuring a model and operating it: rows at or above
+	the returned cut are acted on, the rest are escalated. Fit it on labelled rows
+	the model has not been calibrated on, never on live traffic.
+
+	Returns `inf` when no cut reaches the target, which means escalate everything —
+	the honest answer for a model that is not good enough at that accuracy.
+	"""
+	if not 0.0 < target_accuracy <= 1.0:
+		raise ValueError(f"target_accuracy must lie in (0, 1], got {target_accuracy}")
+	if not 0.0 < min_coverage <= 1.0:
+		raise ValueError(f"min_coverage must lie in (0, 1], got {min_coverage}")
+	c = np.asarray(confidence, dtype=float)
+	ok = np.asarray(correct, dtype=float)
+	if c.shape != ok.shape:
+		raise ValueError("confidence and correct must have the same shape")
+	floor = max(1, int(np.ceil(len(ok) * min_coverage)))
+	best = float("inf")
+	for cut in np.unique(c):
+		kept = c >= cut
+		if kept.sum() >= floor and ok[kept].mean() >= target_accuracy:
+			best = min(best, float(cut))
+	return best
+
+
 @dataclass(frozen=True)
 class Report:
 	n: int
