@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "openkev"
+version = "0.1.0"
+description = "Calibration and decision-quality evaluation for typed-decision models"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = ["numpy>=1.24"]
+
+[project.optional-dependencies]
+mlx = ["mlx>=0.29", "mlx-lm>=0.28"]
+test = ["pytest>=8"]
+
+[project.scripts]
+openkev = "openkev.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/misakaikato/openkev"
+
+[tool.hatch.build.targets.wheel]
+packages = ["openkev"]
+
+[tool.ruff]
+line-length = 100
+indent-width = 4
+
+[tool.ruff.format]
+indent-style = "tab"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
